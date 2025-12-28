@@ -1,4 +1,4 @@
-﻿namespace KafkaIntegration.Api.Services;
+﻿namespace KafkaIntegration.Api;
 
 public static class NSwagExtensions
 {
@@ -8,9 +8,9 @@ public static class NSwagExtensions
         services.AddSwaggerDocument(config =>
             config.PostProcess = (settings =>
             {
-                settings.Info.Title = "Product Management API";
+                settings.Info.Title = "Kafka API";
                 settings.Info.Version = "v1";
-                settings.Info.Description = "API for managing products in the Product Management system";
+                settings.Info.Description = "API for Kafka Demo";
             }));
 
         return services;

@@ -14,7 +14,7 @@ RUN dotnet restore "src/KafkaIntegration.Api/KafkaIntegration.Api.csproj"
 COPY . .
 WORKDIR "/src/src/KafkaIntegration.Api"
 
-RUN dostnet build "KafkaIntegration.Api.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "KafkaIntegration.Api.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release

@@ -1,14 +1,16 @@
 ﻿using KafkaIntegration.Api.Models;
+using KafkaIntegration.Api.Options;
 using KafkaIntegration.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace KafkaIntegration.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/kafka")]
 public class KafkaController(
     IKafkaProducerService producerService,
-    IConfiguration configuration,
+    IOptions<KafkaOptions> kafkaOptions,
     ILogger<KafkaController> logger
 ) : ControllerBase
 {
@@ -17,7 +19,7 @@ public class KafkaController(
     {
         try
         {
-            var topic = configuration["Kafka:DefaultTopic"];
+            var topic = kafkaOptions.Value.DefaultTopic;
 
             var result = await producerService.ProduceAsync(
                 topic,

@@ -1,4 +1,6 @@
 ﻿using Confluent.Kafka;
+using KafkaIntegration.Api.Options;
+using Microsoft.Extensions.Options;
 
 namespace KafkaIntegration.Api.Services.Implementations;
 
@@ -6,15 +8,17 @@ public class KafkaProducerService : IKafkaProducerService, IDisposable
 {
     private readonly IProducer<string, string> _producer;
     private readonly ILogger<KafkaProducerService> _logger;
+    private readonly KafkaOptions _options;
 
-    public KafkaProducerService(IConfiguration configuration, ILogger<KafkaProducerService> logger)
+    public KafkaProducerService(IOptions<KafkaOptions> kafkaOptions, ILogger<KafkaProducerService> logger)
     {
         _logger = logger;
+        _options = kafkaOptions.Value;
 
         var config = new ProducerConfig
         {
-            BootstrapServers = configuration["Kafka:BootstrapServers"],
-            ClientId = configuration["Kafka:ClientId"] ?? "kafka-dotnet-producer",
+            BootstrapServers = _options.BootstrapServers,
+            ClientId = _options.ClientId,
             Acks = Acks.All
         };
 
@@ -46,15 +50,14 @@ public class KafkaProducerService : IKafkaProducerService, IDisposable
     {
         try
         {
-            // Create a temporary admin client to test connectivity
             using var adminClient = new AdminClientBuilder(new AdminClientConfig
             {
-                BootstrapServers = _producer.Name
+                BootstrapServers = _options.BootstrapServers
             }).Build();
 
-            // Get metadata about the cluster to verify connection
-            var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(5));
-            return metadata.OriginatingBrokerId >= 0;
+            var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(2));
+
+            return metadata.Brokers.Count > 0;
         }
         catch (Exception ex)
         {
@@ -65,6 +68,7 @@ public class KafkaProducerService : IKafkaProducerService, IDisposable
 
     public void Dispose()
     {
+        _producer?.Flush(TimeSpan.FromSeconds(10));
         _producer?.Dispose();
     }
 }

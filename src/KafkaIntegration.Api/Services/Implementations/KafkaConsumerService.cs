@@ -1,4 +1,6 @@
 ﻿using Confluent.Kafka;
+using KafkaIntegration.Api.Options;
+using Microsoft.Extensions.Options;
 
 namespace KafkaIntegration.Api.Services.Implementations;
 
@@ -8,14 +10,14 @@ public class KafkaConsumerService : IKafkaConsumerService, IDisposable
     private readonly ILogger<KafkaConsumerService> _logger;
     private bool _consuming = false;
 
-    public KafkaConsumerService(IConfiguration configuration, ILogger<KafkaConsumerService> logger)
+    public KafkaConsumerService(IOptions<KafkaOptions> kafkaOptions, ILogger<KafkaConsumerService> logger)
     {
         _logger = logger;
 
         var config = new ConsumerConfig
         {
-            BootstrapServers = configuration["Kafka:BootstrapServers"],
-            GroupId = configuration["Kafka:ConsumerGroupId"] ?? "kafka-dotnet-consumer-group",
+            BootstrapServers = kafkaOptions.Value.BootstrapServers,
+            GroupId = kafkaOptions.Value.ConsumerGroupId,
             AutoOffsetReset = AutoOffsetReset.Earliest,
             EnableAutoCommit = false
         };
