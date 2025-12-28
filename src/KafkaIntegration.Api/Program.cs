@@ -1,5 +1,5 @@
 using KafkaIntegration.Api.Services;
-using KafkaIntegration.Api.Services.Interfaces;
+using KafkaIntegration.Api.Services.Implementations;
 
 var builder = WebApplication.CreateBuilder(args);
 

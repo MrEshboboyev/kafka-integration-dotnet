@@ -1,6 +1,6 @@
 ﻿using Confluent.Kafka;
 
-namespace KafkaIntegration.Api.Services.Interfaces;
+namespace KafkaIntegration.Api.Services.Implementations;
 
 public class KafkaConsumerService : IKafkaConsumerService, IDisposable
 {

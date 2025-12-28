@@ -1,34 +1,25 @@
-﻿using KafkaIntegration.Api.Services;
+﻿using KafkaIntegration.Api.Models;
+using KafkaIntegration.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KafkaIntegration.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class KafkaController : ControllerBase
+public class KafkaController(
+    IKafkaProducerService producerService,
+    IConfiguration configuration,
+    ILogger<KafkaController> logger
+) : ControllerBase
 {
-    private readonly IKafkaProducerService _producerService;
-    private readonly IConfiguration _configuration;
-    private readonly ILogger<KafkaController> _logger;
-
-    public KafkaController(
-        IKafkaProducerService producerService,
-        IConfiguration configuration,
-        ILogger<KafkaController> logger)
-    {
-        _producerService = producerService;
-        _configuration = configuration;
-        _logger = logger;
-    }
-
     [HttpPost("send")]
     public async Task<IActionResult> SendMessage([FromBody] MessageDto messageDto)
     {
         try
         {
-            var topic = _configuration["Kafka:DefaultTopic"];
+            var topic = configuration["Kafka:DefaultTopic"];
 
-            var result = await _producerService.ProduceAsync(
+            var result = await producerService.ProduceAsync(
                 topic,
                 messageDto.Key ?? Guid.NewGuid().ToString(),
                 messageDto.Value);
@@ -43,7 +34,7 @@ public class KafkaController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error sending message: {ex.Message}");
+            logger.LogError($"Error sending message: {ex.Message}");
             return StatusCode(500, $"Failed to send message: {ex.Message}");
         }
     }
@@ -51,7 +42,7 @@ public class KafkaController : ControllerBase
     [HttpGet("health")]
     public IActionResult CheckHealth()
     {
-        bool isProducerConnected = _producerService.IsConnected();
+        bool isProducerConnected = producerService.IsConnected();
 
         if (isProducerConnected)
         {
@@ -60,10 +51,4 @@ public class KafkaController : ControllerBase
 
         return StatusCode(503, new { Status = "Unhealthy", Message = "Kafka connection failed" });
     }
-}
-
-public class MessageDto
-{
-    public string Key { get; set; }
-    public string Value { get; set; }
 }
