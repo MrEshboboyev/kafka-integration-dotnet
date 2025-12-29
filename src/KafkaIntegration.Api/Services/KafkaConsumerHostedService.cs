@@ -11,8 +11,14 @@ public class KafkaConsumerHostedService(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var topic = kafkaOptions.Value.DefaultTopic;
-        logger.LogInformation($"Starting Kafka consumer for topic: {topic}");
+        logger.LogInformation("Starting Kafka consumer for topic: {Topic}", topic);
 
         await consumerService.StartConsumingAsync(topic, stoppingToken);
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Stopping Kafka consumer hosted service");
+        await base.StopAsync(cancellationToken);
     }
 }

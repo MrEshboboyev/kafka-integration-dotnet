@@ -17,9 +17,14 @@ builder.Services.AddOptions<KafkaOptions>()
 // Register Kafka services
 builder.Services.AddSingleton<IKafkaProducerService, KafkaProducerService>();
 builder.Services.AddSingleton<IKafkaConsumerService, KafkaConsumerService>();
+builder.Services.AddScoped<IMessageProcessor, DefaultMessageProcessor>();
 
 // Register hosted service to start consumer
 builder.Services.AddHostedService<KafkaConsumerHostedService>();
+
+// Add health checks
+builder.Services.AddHealthChecks()
+    .AddCheck<KafkaHealthCheck>("kafka");
 
 var app = builder.Build();
 
@@ -33,5 +38,8 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// Map health check endpoint
+app.MapHealthChecks("/health");
 
 app.Run();
