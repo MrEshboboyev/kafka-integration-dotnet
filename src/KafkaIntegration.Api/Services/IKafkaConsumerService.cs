@@ -13,6 +13,11 @@ public interface IKafkaConsumerService
     Task StartConsumingAsync(IEnumerable<string> topics, CancellationToken cancellationToken);
     
     /// <summary>
+    /// Starts consuming messages with batch processing
+    /// </summary>
+    Task StartConsumingWithBatchProcessingAsync(IEnumerable<string> topics, CancellationToken cancellationToken);
+    
+    /// <summary>
     /// Subscribe to specific partitions of a topic
     /// </summary>
     Task SubscribeToPartitionsAsync(string topic, IEnumerable<int> partitions, CancellationToken cancellationToken);

@@ -2,6 +2,7 @@
 using KafkaIntegration.Api.Models;
 using KafkaIntegration.Api.Options;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace KafkaIntegration.Api.Services.Implementations;
 
@@ -12,11 +13,17 @@ public class KafkaProducerService : IKafkaProducerService, IAsyncDisposable, IDi
     private readonly KafkaOptions _options;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private bool _disposed = false;
+    private readonly JsonSerializerOptions _jsonSerializerOptions;
 
     public KafkaProducerService(IOptions<KafkaOptions> kafkaOptions, ILogger<KafkaProducerService> logger)
     {
         _logger = logger;
         _options = kafkaOptions.Value;
+        _jsonSerializerOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        };
 
         _producer = CreateProducer();
     }
@@ -35,31 +42,43 @@ public class KafkaProducerService : IKafkaProducerService, IAsyncDisposable, IDi
             QueueBufferingMaxMessages = _options.QueueBufferingMaxMessages,
             QueueBufferingMaxKbytes = _options.QueueBufferingMaxKbytes,
             MessageSendMaxRetries = _options.MessageSendMaxRetries,
-            EnableIdempotence = true, // Ensure exactly-once semantics
-            MaxInFlight = 5 // Limit in-flight requests for better error handling
+            RetryBackoffMs = _options.RetryBackoffMs,
+            MaxInFlight = (_options.EnableIdempotence == true)
+                ? Math.Min(_options.MaxInFlight, 5)
+                : _options.MaxInFlight,
+            EnableIdempotence = _options.EnableIdempotence,
+            SecurityProtocol = string.IsNullOrEmpty(_options.SecurityProtocol) 
+                ? SecurityProtocol.Plaintext 
+                : Enum.Parse<SecurityProtocol>(_options.SecurityProtocol, ignoreCase: true),
+            SaslUsername = _options.SaslUsername,
+            SaslPassword = _options.SaslPassword,
+            SaslMechanism = string.IsNullOrEmpty(_options.SaslMechanism) 
+                ? SaslMechanism.Plain 
+                : Enum.Parse<SaslMechanism>(_options.SaslMechanism, ignoreCase: true),
+            CompressionType = string.IsNullOrEmpty(_options.CompressionType) 
+                ? CompressionType.Snappy 
+                : Enum.Parse<CompressionType>(_options.CompressionType, ignoreCase: true)
         };
 
-        // Add security configuration if provided
-        if (!string.IsNullOrEmpty(_options.SecurityProtocol))
+        // Add SSL configuration if provided
+        if (!string.IsNullOrEmpty(_options.SslCaLocation))
         {
-            config.SecurityProtocol = Enum.Parse<SecurityProtocol>(_options.SecurityProtocol, ignoreCase: true);
-            
-            if (!string.IsNullOrEmpty(_options.SaslUsername) && !string.IsNullOrEmpty(_options.SaslPassword))
-            {
-                config.SaslUsername = _options.SaslUsername;
-                config.SaslPassword = _options.SaslPassword;
-                
-                if (!string.IsNullOrEmpty(_options.SaslMechanism))
-                {
-                    config.SaslMechanism = Enum.Parse<SaslMechanism>(_options.SaslMechanism, ignoreCase: true);
-                }
-            }
+            config.SslCaLocation = _options.SslCaLocation;
         }
-
-        // Add compression if specified
-        if (!string.IsNullOrEmpty(_options.CompressionType))
+        
+        if (!string.IsNullOrEmpty(_options.SslCertificateLocation))
         {
-            config.CompressionType = Enum.Parse<CompressionType>(_options.CompressionType, ignoreCase: true);
+            config.SslCertificateLocation = _options.SslCertificateLocation;
+        }
+        
+        if (!string.IsNullOrEmpty(_options.SslKeyLocation))
+        {
+            config.SslKeyLocation = _options.SslKeyLocation;
+        }
+        
+        if (!string.IsNullOrEmpty(_options.SslKeyPassword))
+        {
+            config.SslKeyPassword = _options.SslKeyPassword;
         }
 
         return new ProducerBuilder<string, string>(config)
@@ -118,7 +137,10 @@ public class KafkaProducerService : IKafkaProducerService, IAsyncDisposable, IDi
         // Add message metadata to headers
         var headers = new Dictionary<string, string>(message.Headers)
         {
-            ["timestamp"] = message.Timestamp.ToString("O")
+            ["timestamp"] = message.Timestamp.ToString("O"),
+            ["correlationId"] = message.CorrelationId ?? Guid.NewGuid().ToString(),
+            ["messageType"] = message.MessageType ?? "unknown",
+            ["source"] = _options.ClientId
         };
         
         if (!string.IsNullOrEmpty(message.CorrelationId))
@@ -134,6 +156,112 @@ public class KafkaProducerService : IKafkaProducerService, IAsyncDisposable, IDi
         message.Offset = (long)result.Offset;
 
         return result;
+    }
+
+    public async Task<DeliveryResult<string, string>> ProduceAsync<T>(
+        string topic,
+        string key,
+        T value,
+        Dictionary<string, string>? headers = null) where T : class
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        try
+        {
+            string serializedValue = JsonSerializer.Serialize(value, _jsonSerializerOptions);
+            
+            var messageHeaders = headers ?? [];
+            messageHeaders["contentType"] = "application/json";
+            messageHeaders["serializedType"] = typeof(T).Name;
+
+            var message = new Message<string, string>
+            {
+                Key = key,
+                Value = serializedValue,
+                Headers = CreateKafkaHeaders(messageHeaders)
+            };
+
+            var result = await _producer.ProduceAsync(topic, message);
+            
+            _logger.LogInformation(
+                "Message delivered: Topic={Topic}, Partition=[{Partition}], Offset={Offset}, Key={Key}, Type={Type}", 
+                result.Topic, 
+                result.Partition, 
+                result.Offset, 
+                key,
+                typeof(T).Name);
+            
+            return result;
+        }
+        catch (ProduceException<string, string> ex)
+        {
+            _logger.LogError(
+                ex, 
+                "Failed to deliver message: Topic={Topic}, Key={Key}, Type={Type}, Error={Error}", 
+                topic, 
+                key, 
+                typeof(T).Name, 
+                ex.Error.Reason);
+            
+            throw;
+        }
+    }
+
+    public async Task<DeliveryResult<string, string>> ProduceWithRetryAsync(string topic, string key, string value, Dictionary<string, string>? headers = null, int maxRetries = 3)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var message = new Message<string, string>
+        {
+            Key = key,
+            Value = value,
+            Headers = CreateKafkaHeaders(headers ?? new Dictionary<string, string>())
+        };
+
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var result = await _producer.ProduceAsync(topic, message);
+                
+                _logger.LogInformation(
+                    "Message delivered: Topic={Topic}, Partition=[{Partition}], Offset={Offset}, Key={Key}, Attempt={Attempt}", 
+                    result.Topic, 
+                    result.Partition, 
+                    result.Offset, 
+                    key,
+                    attempt + 1);
+                
+                return result;
+            }
+            catch (ProduceException<string, string> ex) when (attempt < maxRetries)
+            {
+                _logger.LogWarning(
+                    ex, 
+                    "Failed to deliver message: Topic={Topic}, Key={Key}, Attempt={Attempt}/{MaxRetries}, Error={Error}. Retrying...", 
+                    topic, 
+                    key, 
+                    attempt + 1, 
+                    maxRetries,
+                    ex.Error.Reason);
+                
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt + 1))); // Exponential backoff
+            }
+            catch (ProduceException<string, string> ex)
+            {
+                _logger.LogError(
+                    ex, 
+                    "Failed to deliver message after {MaxRetries} retries: Topic={Topic}, Key={Key}, Error={Error}", 
+                    maxRetries,
+                    topic, 
+                    key, 
+                    ex.Error.Reason);
+                
+                throw;
+            }
+        }
+        
+        throw new InvalidOperationException("Retry logic failed to execute properly");
     }
 
     public bool IsConnected()

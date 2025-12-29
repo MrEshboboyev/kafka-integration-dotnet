@@ -17,6 +17,10 @@ public class KafkaOptions
     public string? SaslPassword { get; set; }
     public string? SecurityProtocol { get; set; } = "PLAINTEXT"; // PLAINTEXT, SASL_PLAINTEXT, SASL_SSL, SSL
     public string? SaslMechanism { get; set; } = "PLAIN"; // PLAIN, SCRAM-SHA-256, SCRAM-SHA-512, GSSAPI, OAUTHBEARER
+    public string? SslCaLocation { get; set; }
+    public string? SslCertificateLocation { get; set; }
+    public string? SslKeyLocation { get; set; }
+    public string? SslKeyPassword { get; set; }
 
     // Producer settings
     [Required] 
@@ -30,6 +34,9 @@ public class KafkaOptions
     public int QueueBufferingMaxKbytes { get; set; } = 1048576;
     public int MessageSendMaxRetries { get; set; } = 3;
     public string? CompressionType { get; set; } = "Snappy"; // none, gzip, snappy, lz4, zstd
+    public int RetryBackoffMs { get; set; } = 100;
+    public int MaxInFlight { get; set; } = 1000000;
+    public bool EnableIdempotence { get; set; } = true;
     
     // Consumer settings
     [Required]
@@ -42,6 +49,9 @@ public class KafkaOptions
     public int MaxPartitionFetchBytes { get; set; } = 1048576;
     public int FetchMinBytes { get; set; } = 1;
     public int FetchWaitMaxMs { get; set; } = 500;
+    public int MaxConcurrentMessages { get; set; } = 1000; // Maximum number of messages to process concurrently
+    public int PollBatchSize { get; set; } = 100; // Number of messages to poll in each batch
+    public int AutoCommitIntervalMs { get; set; } = 5000; // Interval for auto commit if enabled
     
     // Common settings
     public int SocketTimeoutMs { get; set; } = 60000;
@@ -55,4 +65,20 @@ public class KafkaOptions
     // Serialization settings
     public string MessageEncoding { get; set; } = "utf-8";
     public string SerializerType { get; set; } = "json"; // json, avro, protobuf
+    
+    // Dead Letter Queue settings
+    public string? DeadLetterQueueTopic { get; set; }
+    
+    // Message processing settings
+    public int MaxRetriesOnProcessingFailure { get; set; } = 3;
+    public TimeSpan ProcessingRetryDelay { get; set; } = TimeSpan.FromSeconds(5);
+    
+    // Monitoring settings
+    public bool EnableMetrics { get; set; } = true;
+    public TimeSpan MetricsIntervalMs { get; set; } = TimeSpan.FromSeconds(30);
+    
+    // Topic creation settings
+    public bool AutoCreateTopics { get; set; } = true;
+    public int TopicReplicationFactor { get; set; } = 1;
+    public int TopicPartitions { get; set; } = 1;
 }

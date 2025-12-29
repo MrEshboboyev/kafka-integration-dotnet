@@ -21,6 +21,16 @@ public interface IKafkaProducerService
     Task<DeliveryResult<string, string>> ProduceAsync(KafkaMessage message);
     
     /// <summary>
+    /// Produces a typed message to the specified topic
+    /// </summary>
+    Task<DeliveryResult<string, string>> ProduceAsync<T>(string topic, string key, T value, Dictionary<string, string>? headers = null) where T : class;
+    
+    /// <summary>
+    /// Produces a message with retry logic
+    /// </summary>
+    Task<DeliveryResult<string, string>> ProduceWithRetryAsync(string topic, string key, string value, Dictionary<string, string>? headers = null, int maxRetries = 3);
+    
+    /// <summary>
     /// Checks if the producer is connected to Kafka
     /// </summary>
     bool IsConnected();
